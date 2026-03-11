@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DropSpy — Amazon → eBay Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg:      #060608;
+  --bg2:     #0d0d12;
+  --bg3:     #13131a;
+  --border:  #1e1e2e;
+  --border2: #2a2a3e;
+  --accent:  #00f5a0;
+  --blue:    #00d4ff;
+  --warn:    #ffb800;
+  --red:     #ff4466;
+  --purple:  #bf7fff;
+  --text:    #e8e8f0;
+  --muted:   #555570;
+  --muted2:  #888899;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'Syne', sans-serif; min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0,245,160,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,245,160,.025) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
+
+/* ── HEADER ── */
+header { padding: 44px 0 28px; text-align: center; border-bottom: 1px solid var(--border); margin-bottom: 36px; }
+.logo { display: inline-flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.logo-icon { width: 42px; height: 42px; background: linear-gradient(135deg,var(--accent),var(--blue)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.logo-name { font-size: 30px; font-weight: 800; letter-spacing: -1px; background: linear-gradient(90deg,var(--accent),var(--blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.logo-sub { color: var(--muted2); font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+
+/* ── CONFIG PANEL ── */
+.config { background: var(--bg3); border: 1px solid var(--border2); border-radius: 16px; padding: 24px; margin-bottom: 28px; }
+.config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.field label { display: block; font-size: 10px; font-weight: 600; color: var(--muted2); letter-spacing: 2px; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; margin-bottom: 7px; }
+.field input {
+  width: 100%; background: var(--bg2); border: 1px solid var(--border2); border-radius: 9px;
+  padding: 11px 14px; color: var(--text); font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; outline: none; transition: border-color .2s;
+}
+.field input:focus { border-color: var(--accent); }
+.field input::placeholder { color: var(--muted); }
+.field.full { grid-column: 1 / -1; }
+.hint { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 5px; }
+.hint a { color: var(--blue); text-decoration: none; }
+
+.btn-run {
+  width: 100%; padding: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--blue));
+  border: none; border-radius: 10px; color: #000;
+  font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 800;
+  cursor: pointer; letter-spacing: .5px; transition: all .2s;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.btn-run:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,245,160,.25); }
+.btn-run:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ── STATUS ── */
+.status { display: none; align-items: center; gap: 12px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 10px; padding: 13px 18px; margin-bottom: 22px; }
+.status.on { display: flex; }
+.spinner { width: 15px; height: 15px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.status-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted2); }
+.status-step { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-left: auto; }
+
+/* ── ERROR ── */
+.err { display: none; background: rgba(255,68,102,.08); border: 1px solid rgba(255,68,102,.3); border-radius: 10px; padding: 14px 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--red); margin-bottom: 20px; }
+.err.on { display: block; }
+
+/* ── RESULTS ── */
+#out { display: none; }
+#out.on { display: block; }
+
+/* ── SECTION TITLE ── */
+.stitle { font-size: 10px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: var(--muted2); font-family: 'JetBrains Mono', monospace; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.stitle::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── AMAZON CARD ── */
+.amz-card { background: var(--bg3); border: 1px solid var(--border2); border-radius: 16px; padding: 22px; margin-bottom: 24px; display: grid; grid-template-columns: 150px 1fr; gap: 22px; }
+.amz-img { width: 150px; height: 150px; object-fit: contain; background: #fff; border-radius: 10px; padding: 8px; }
+.amz-nophoto { width: 150px; height: 150px; background: var(--bg2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 40px; color: var(--muted); border: 1px dashed var(--border2); }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; padding: 3px 9px; border-radius: 4px; margin-bottom: 10px; }
+.badge-amz { background: rgba(255,153,0,.12); color: #ff9900; border: 1px solid rgba(255,153,0,.3); }
+.badge-ebay { background: rgba(0,245,160,.1); color: var(--accent); border: 1px solid rgba(0,245,160,.25); }
+.badge-ai { background: rgba(191,127,255,.12); color: var(--purple); border: 1px solid rgba(191,127,255,.3); }
+.ptitle { font-size: 15px; font-weight: 600; line-height: 1.45; margin-bottom: 13px; }
+.tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.tag { background: var(--bg2); border: 1px solid var(--border); border-radius: 7px; padding: 5px 11px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.tag span { display: block; font-size: 8px; color: var(--muted); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
+.tag strong { color: var(--text); }
+.tag.g strong { color: var(--accent); }
+.tag.y strong { color: var(--warn); }
+.tag.r strong { color: var(--red); }
+.tag.b strong { color: var(--blue); }
+.conf-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-family: 'JetBrains Mono', monospace; padding: 3px 8px; border-radius: 4px; margin-top: 10px; }
+.conf-high   { background: rgba(0,245,160,.1); color: var(--accent); }
+.conf-medium { background: rgba(255,184,0,.1); color: var(--warn); }
+.conf-low    { background: rgba(255,68,102,.1); color: var(--red); }
+
+/* ── PROFIT PANEL ── */
+.profit-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 1px; background: var(--border2); border-radius: 14px; overflow: hidden; margin-bottom: 24px; border: 1px solid var(--border2); }
+.profit-cell { background: var(--bg3); padding: 16px 14px; text-align: center; }
+.profit-cell span { display: block; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted2); font-family: 'JetBrains Mono', monospace; margin-bottom: 7px; }
+.profit-cell big { font-size: 22px; font-weight: 800; }
+.profit-cell.breakdown { background: var(--bg2); }
+.big-g { color: var(--accent); }
+.big-y { color: var(--warn); }
+.big-r { color: var(--red); }
+.big-b { color: var(--blue); }
+
+/* ── VERDICT ── */
+.verdict { display: flex; align-items: center; gap: 14px; padding: 16px 22px; border-radius: 12px; margin-bottom: 24px; font-weight: 700; font-size: 15px; }
+.verdict.win  { background: rgba(0,245,160,.1);  border: 1px solid rgba(0,245,160,.3);  color: var(--accent); }
+.verdict.warn { background: rgba(255,184,0,.1);  border: 1px solid rgba(255,184,0,.3);  color: var(--warn); }
+.verdict.skip { background: rgba(255,68,102,.1); border: 1px solid rgba(255,68,102,.3); color: var(--red); }
+.verdict-icon { font-size: 26px; }
+.verdict-detail { font-size: 13px; font-weight: 400; color: var(--muted2); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+
+/* ── EBAY GRID ── */
+.ebay-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap: 13px; margin-bottom: 24px; }
+.ebay-card { background: var(--bg3); border: 1px solid var(--border2); border-radius: 12px; padding: 15px; cursor: pointer; transition: all .2s; text-decoration: none; display: block; }
+.ebay-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,245,160,.1); }
+.ebay-img { width: 100%; height: 155px; object-fit: contain; background: #fff; border-radius: 8px; padding: 6px; margin-bottom: 11px; }
+.ebay-nophoto { width: 100%; height: 155px; background: var(--bg2); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--muted); margin-bottom: 11px; border: 1px dashed var(--border2); }
+.ebay-title { font-size: 12px; line-height: 1.4; margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ebay-row { display: flex; justify-content: space-between; align-items: flex-end; }
+.ebay-price { font-size: 19px; font-weight: 800; color: var(--accent); }
+.ebay-ship { font-size: 10px; color: var(--muted2); font-family: 'JetBrains Mono', monospace; }
+.m-tag { display: inline-block; font-size: 10px; font-weight: 600; font-family: 'JetBrains Mono', monospace; padding: 2px 8px; border-radius: 4px; margin-top: 8px; }
+.m-g { background: rgba(0,245,160,.15); color: var(--accent); }
+.m-y { background: rgba(255,184,0,.15); color: var(--warn); }
+.m-r { background: rgba(255,68,102,.15); color: var(--red); }
+.seller-info { font-size: 9px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 5px; }
+.top-rated { color: var(--accent); font-size: 9px; }
+
+/* ── AI BOX ── */
+.ai-box { background: linear-gradient(135deg,rgba(138,43,226,.07),rgba(0,212,255,.04)); border: 1px solid rgba(138,43,226,.25); border-radius: 14px; padding: 22px 26px; margin-bottom: 24px; }
+.ai-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.ai-icon { width: 32px; height: 32px; background: linear-gradient(135deg,#7b2fbe,#00d4ff); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.ai-label { font-size: 12px; font-weight: 700; color: var(--purple); }
+.ai-model { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+.ai-body { font-size: 13px; line-height: 1.75; color: var(--muted2); font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; }
+.ai-body strong { color: var(--text); }
+.ai-body .win-text  { color: var(--accent); font-weight: 700; }
+.ai-body .warn-text { color: var(--warn);   font-weight: 700; }
+.ai-body .skip-text { color: var(--red);    font-weight: 700; }
+
+/* ── FOOTER ── */
+footer { text-align: center; padding: 32px 0; border-top: 1px solid var(--border); margin-top: 20px; color: var(--muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+
+@media(max-width:640px) {
+  .config-grid { grid-template-columns: 1fr; }
+  .amz-card { grid-template-columns: 1fr; }
+  .profit-grid { grid-template-columns: repeat(2,1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🔍</div>
+      <div class="logo-name">DropSpy</div>
+    </div>
+    <div class="logo-sub">Amazon → eBay Winning Product Analyzer • by Lê Huy</div>
+  </header>
+
+  <!-- Config -->
+  <div class="config">
+    <div class="config-grid">
+      <div class="field">
+        <label>Amazon ASIN</label>
+        <input id="asin" placeholder="B003BM9IK2" maxlength="12" />
+      </div>
+      <div class="field">
+        <label>eBay App ID</label>
+        <input id="ebayApp" placeholder="LeHuy-DropSpy-PRD-xxxx" />
+        <div class="hint">Get free at <a href="https://developer.ebay.com" target="_blank">developer.ebay.com</a> → Application Keys</div>
+      </div>
+      <div class="field full">
+        <label>Anthropic API Key</label>
+        <input id="apiKey" type="password" placeholder="sk-ant-api03-..." />
+        <div class="hint">Required for Amazon data + AI analysis. Get at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></div>
+      </div>
+    </div>
+    <button class="btn-run" id="btnRun" onclick="runAnalysis()">
+      <span>⚡</span> ANALYZE PRODUCT
+    </button>
+  </div>
+
+  <!-- Sandbox Notice -->
+  <div id="sandboxNotice" style="display:none;align-items:center;gap:12px;background:rgba(255,184,0,.08);border:1px solid rgba(255,184,0,.3);border-radius:10px;padding:13px 18px;margin-bottom:18px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#ffb800;">
+    <span>⚠️</span>
+    <span><strong>Sandbox Mode:</strong> eBay Sandbox có ít data test — eBay listings có thể trống. Khi có Production App ID thì data sẽ đầy đủ. AI analysis vẫn hoạt động bình thường.</span>
+  </div>
+
+  <!-- Status -->
+  <div class="status" id="status">
+    <div class="spinner"></div>
+    <div class="status-text" id="stText">Starting...</div>
+    <div class="status-step" id="stStep"></div>
+  </div>
+
+  <!-- Error -->
+  <div class="err" id="errBox"></div>
+
+  <!-- Results -->
+  <div id="out">
+    <div class="stitle">Amazon Source Product</div>
+    <div class="amz-card" id="amzCard"></div>
+
+    <div class="stitle">Profit & Fee Breakdown</div>
+    <div class="profit-grid" id="profitGrid"></div>
+
+    <div class="verdict" id="verdict"></div>
+
+    <div class="stitle" id="ebayTitle">eBay Comparable Listings</div>
+    <div class="ebay-grid" id="ebayGrid"></div>
+
+    <div class="stitle">Claude AI Dropship Intelligence</div>
+    <div class="ai-box">
+      <div class="ai-head">
+        <div class="ai-icon">✦</div>
+        <div>
+          <div class="ai-label">Claude AI Analysis</div>
+          <div class="ai-model">claude-sonnet-4-6 • Amazon→eBay Expert Mode</div>
+        </div>
+      </div>
+      <div class="ai-body" id="aiBody">Waiting for analysis...</div>
+    </div>
+  </div>
+
+  <footer>DropSpy v2.0 • Built for Amazon→eBay Dropshippers • by Lê Huy</footer>
+</div>
+
+<script>
+// ── Save/load config ──
+const load = k => localStorage.getItem('ds_' + k) || '';
+const save = (k,v) => localStorage.setItem('ds_' + k, v);
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('ebayApp').value = load('ebayApp');
+  document.getElementById('apiKey').value  = load('apiKey');
+});
+
+document.getElementById('ebayApp').addEventListener('change', e => save('ebayApp', e.target.value));
+document.getElementById('apiKey').addEventListener('change',  e => save('apiKey',  e.target.value));
+document.getElementById('asin').addEventListener('input', function() {
+  this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+});
+document.getElementById('asin').addEventListener('keydown', e => { if(e.key==='Enter') runAnalysis(); });
+
+// ── Base URL (auto-detect Vercel vs local) ──
+const BASE = window.location.origin;
+
+async function runAnalysis() {
+  const asin   = document.getElementById('asin').value.trim();
+  const ebayId = document.getElementById('ebayApp').value.trim();
+  const apiKey = document.getElementById('apiKey').value.trim();
+
+  if (!asin || asin.length < 10) return showErr('Enter a valid ASIN (10 characters)');
+  if (!apiKey) return showErr('Anthropic API key is required for AI analysis');
+
+  hideErr();
+  document.getElementById('out').classList.remove('on');
+  document.getElementById('btnRun').disabled = true;
+
+  try {
+    // Step 1: Amazon data via Claude AI
+    setStatus('Fetching Amazon product data via Claude AI...', '1/3');
+    const amazon = await fetchAmazon(asin, apiKey);
+
+    // Step 2: eBay real listings
+    setStatus('Searching eBay for comparable listings...', '2/3');
+    const ebayListings = await fetchEbay(amazon, ebayId);
+
+    // Step 3: Calculate profit
+    const profit = calcProfit(amazon, ebayListings);
+
+    // Step 4: AI deep analysis
+    setStatus('Running Claude AI deep analysis...', '3/3');
+    const aiAnalysis = await fetchAnalysis(amazon, ebayListings, profit, apiKey);
+
+    // Render all
+    renderAmazon(amazon);
+    renderProfit(profit);
+    renderVerdict(profit);
+    renderEbay(ebayListings, amazon.price, profit);
+    renderAI(aiAnalysis);
+
+    document.getElementById('out').classList.add('on');
+    hideStatus();
+
+  } catch(e) {
+    hideStatus();
+    showErr('Error: ' + e.message);
+  }
+
+  document.getElementById('btnRun').disabled = false;
+}
+
+// ── API CALLS ──
+async function fetchAmazon(asin, apiKey) {
+  const r = await fetch(BASE + '/api/amazon', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ asin, anthropicKey: apiKey })
+  });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error || 'Amazon API failed');
+  return d.product;
+}
+
+async function fetchEbay(amazon, ebayId) {
+  if (!ebayId) return [];
+
+  const kw = (amazon.searchKeywords || [amazon.title])
+    .join(' ').split(' ').slice(0,6).join(' ');
+
+  const url = BASE + '/api/ebay?keywords=' + encodeURIComponent(kw) + '&appId=' + encodeURIComponent(ebayId);
+  const r   = await fetch(url);
+  const d   = await r.json();
+
+  // Sandbox mode notice
+  if (d.sandbox) {
+    const notice = document.getElementById('sandboxNotice');
+    if (notice) notice.style.display = 'flex';
+  }
+
+  // Sandbox thường trả ít/không có data thật — dùng AI estimate
+  if (!d.success && d.error === 'NO_RESULTS') return [];
+  if (!d.success) throw new Error(d.error || 'eBay API failed');
+  return d.listings || [];
+}
+
+async function fetchAnalysis(amazon, ebayListings, profit, apiKey) {
+  const r = await fetch(BASE + '/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amazon, ebayListings, profit, anthropicKey: apiKey })
+  });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error || 'Analysis failed');
+  return d.analysis;
+}
+
+// ── PROFIT CALC ──
+function calcProfit(amazon, listings) {
+  const cost    = parseFloat(amazon.price) || 0;
+  const prices  = listings.map(l => l.totalPrice || l.price).filter(p => p > 1);
+  const avg     = prices.length ? prices.reduce((a,b)=>a+b,0)/prices.length : 0;
+  const max     = prices.length ? Math.max(...prices) : 0;
+  const min     = prices.length ? Math.min(...prices) : 0;
+
+  const ebayFee    = avg * 0.1325 + 0.30;
+  const payFee     = avg * 0.029  + 0.30;
+  const totalCost  = cost + ebayFee + payFee;
+  const profit     = avg - totalCost;
+  const margin     = avg > 0 ? profit / avg * 100 : 0;
+  const roi        = cost > 0 ? profit / cost * 100 : 0;
+
+  return {
+    amazonPrice: parseFloat(cost.toFixed(2)),
+    avgEbayPrice: parseFloat(avg.toFixed(2)),
+    maxEbayPrice: parseFloat(max.toFixed(2)),
+    minEbayPrice: parseFloat(min.toFixed(2)),
+    ebayFee: parseFloat(ebayFee.toFixed(2)),
+    paymentFee: parseFloat(payFee.toFixed(2)),
+    totalCost: parseFloat(totalCost.toFixed(2)),
+    profit: parseFloat(profit.toFixed(2)),
+    margin: parseFloat(margin.toFixed(1)),
+    roi: parseFloat(roi.toFixed(1))
+  };
+}
+
+// ── RENDER ──
+function renderAmazon(a) {
+  const conf  = a.confidence || 'medium';
+  const confC = conf === 'high' ? 'conf-high' : conf === 'medium' ? 'conf-medium' : 'conf-low';
+  const img   = a.imageUrl
+    ? `<img class="amz-img" src="${a.imageUrl}" onerror="this.outerHTML='<div class=amz-nophoto>📦</div>'" alt="" />`
+    : `<div class="amz-nophoto">📦</div>`;
+
+  document.getElementById('amzCard').innerHTML = `
+    ${img}
+    <div>
+      <span class="badge badge-amz">▸ Amazon.com</span>
+      <div class="ptitle">${esc(a.title || 'N/A')}</div>
+      <div class="tags">
+        <div class="tag g"><span>Price</span><strong>$${a.price}</strong></div>
+        <div class="tag y"><span>Rating</span><strong>${a.rating} ★</strong></div>
+        <div class="tag"><span>Reviews</span><strong>${fmt(a.reviewCount)}</strong></div>
+        <div class="tag"><span>BSR</span><strong>#${fmt(a.bsr)}</strong></div>
+        <div class="tag"><span>Category</span><strong>${a.bsrCategory || '—'}</strong></div>
+        <div class="tag b"><span>Est. Sales/Mo</span><strong>${a.monthlyUnits || '—'}</strong></div>
+        ${a.isPrime ? '<div class="tag g"><span>Shipping</span><strong>Prime ✓</strong></div>' : ''}
+        ${a.weight ? `<div class="tag"><span>Weight</span><strong>${a.weight}</strong></div>` : ''}
+      </div>
+      <span class="conf-badge ${confC}">AI confidence: ${conf}</span>
+      <div style="margin-top:10px">
+        <a href="${a.url}" target="_blank" style="font-size:11px;color:var(--blue);font-family:'JetBrains Mono',monospace;text-decoration:none">View on Amazon →</a>
+      </div>
+    </div>`;
+}
+
+function renderProfit(p) {
+  const pc = p.margin >= 15 ? 'big-g' : p.margin >= 8 ? 'big-y' : 'big-r';
+  document.getElementById('profitGrid').innerHTML = `
+    <div class="profit-cell"><span>Amazon Cost</span><big class="big-b">$${p.amazonPrice}</big></div>
+    <div class="profit-cell breakdown"><span>eBay Fees</span><big class="big-r">-$${p.ebayFee}</big></div>
+    <div class="profit-cell breakdown"><span>Payment Fees</span><big class="big-r">-$${p.paymentFee}</big></div>
+    <div class="profit-cell"><span>Avg eBay Price</span><big>${p.avgEbayPrice > 0 ? '$'+p.avgEbayPrice : 'N/A'}</big></div>
+    <div class="profit-cell"><span>Net Profit / Unit</span><big class="${pc}">${p.profit > 0 ? '+$'+p.profit : '$'+p.profit}</big></div>`;
+}
+
+function renderVerdict(p) {
+  const el = document.getElementById('verdict');
+  if (p.margin >= 15 && p.profit > 5) {
+    el.className = 'verdict win';
+    el.innerHTML = `<span class="verdict-icon">🚀</span><div><div>WIN PRODUCT — Margin ${p.margin}%, ROI ${p.roi}%</div><div class="verdict-detail">$${p.profit}/unit profit • Worth testing with 5-10 units</div></div>`;
+  } else if (p.margin >= 8 && p.profit > 0) {
+    el.className = 'verdict warn';
+    el.innerHTML = `<span class="verdict-icon">⚡</span><div><div>RISKY — Margin ${p.margin}%, ROI ${p.roi}%</div><div class="verdict-detail">Thin margin after fees • Test small volume first</div></div>`;
+  } else {
+    el.className = 'verdict skip';
+    el.innerHTML = `<span class="verdict-icon">🚫</span><div><div>SKIP — Margin ${p.margin}%</div><div class="verdict-detail">Not profitable after eBay fees • Find a better product</div></div>`;
+  }
+}
+
+function renderEbay(listings, amazonPrice, profit) {
+  const cost = parseFloat(amazonPrice) || 0;
+  const title = document.getElementById('ebayTitle');
+
+  if (!listings.length) {
+    title.textContent = 'eBay Listings (Add eBay App ID for real data)';
+    document.getElementById('ebayGrid').innerHTML =
+      `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:12px;background:var(--bg3);border:1px dashed var(--border2);border-radius:12px">
+        Add your eBay App ID above to see real comparable listings<br>
+        <a href="https://developer.ebay.com" target="_blank" style="color:var(--blue);margin-top:8px;display:inline-block">Get free eBay App ID →</a>
+      </div>`;
+    return;
+  }
+
+  title.textContent = `eBay Comparable Listings (${listings.length} found)`;
+  document.getElementById('ebayGrid').innerHTML = listings.slice(0, 8).map(item => {
+    const totalP = item.totalPrice || item.price;
+    const fees   = totalP * 0.1325 + totalP * 0.029 + 0.60;
+    const netP   = totalP - cost - fees;
+    const marg   = totalP > 0 ? netP / totalP * 100 : 0;
+    const mc     = marg >= 15 ? 'm-g' : marg >= 8 ? 'm-y' : 'm-r';
+    const imgH   = item.imageUrl
+      ? `<img class="ebay-img" src="${item.imageUrl}" onerror="this.outerHTML='<div class=ebay-nophoto>🛒</div>'" alt="" />`
+      : `<div class="ebay-nophoto">🛒</div>`;
+
+    return `<a class="ebay-card" href="${item.url}" target="_blank">
+      <span class="badge badge-ebay" style="font-size:9px;margin-bottom:8px">eBay</span>
+      ${imgH}
+      <div class="ebay-title">${esc(item.title)}</div>
+      <div class="ebay-row">
+        <div class="ebay-price">$${item.price.toFixed(2)}</div>
+        <div class="ebay-ship">${item.shipping > 0 ? '+$'+item.shipping.toFixed(2)+' ship' : 'Free ship'}</div>
+      </div>
+      <span class="m-tag ${mc}">Margin: ${marg.toFixed(1)}%</span>
+      <div class="seller-info">
+        ${item.topRated ? '<span class="top-rated">★ Top Rated</span> • ' : ''}
+        ${item.feedbackPct ? item.feedbackPct+'% feedback' : ''}
+        ${item.feedbackScore ? ' ('+fmt(item.feedbackScore)+')' : ''}
+      </div>
+    </a>`;
+  }).join('');
+}
+
+function renderAI(text) {
+  let html = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/WIN PRODUCT/g, '<span class="win-text">WIN PRODUCT</span>')
+    .replace(/\bSKIP\b/g, '<span class="skip-text">SKIP</span>')
+    .replace(/RISKY/g, '<span class="warn-text">RISKY</span>');
+  document.getElementById('aiBody').innerHTML = html;
+}
+
+// ── UTILS ──
+function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+function fmt(n) { if(!n && n!==0) return '—'; n=parseInt(n)||0; if(n>=1000000) return (n/1000000).toFixed(1)+'M'; if(n>=1000) return (n/1000).toFixed(1)+'K'; return n.toString(); }
+
+function setStatus(msg, step) {
+  document.getElementById('status').classList.add('on');
+  document.getElementById('stText').textContent = msg;
+  document.getElementById('stStep').textContent = step ? 'Step '+step : '';
+}
+function hideStatus() { document.getElementById('status').classList.remove('on'); }
+function showErr(m) { const e=document.getElementById('errBox'); e.textContent=m; e.classList.add('on'); }
+function hideErr()  { document.getElementById('errBox').classList.remove('on'); }
+</script>
+</body>
+</html>
