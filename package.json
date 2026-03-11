@@ -1,0 +1,11 @@
+{
+  "name": "dropspy-analyzer",
+  "version": "1.0.0",
+  "description": "Amazon to eBay Dropship Product Analyzer",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
