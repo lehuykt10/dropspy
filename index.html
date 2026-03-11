@@ -203,6 +203,12 @@ footer { text-align: center; padding: 32px 0; border-top: 1px solid var(--border
     </button>
   </div>
 
+  <!-- Sandbox Notice -->
+  <div id="sandboxNotice" style="display:none;align-items:center;gap:12px;background:rgba(255,184,0,.08);border:1px solid rgba(255,184,0,.3);border-radius:10px;padding:13px 18px;margin-bottom:18px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#ffb800;">
+    <span>⚠️</span>
+    <span><strong>Sandbox Mode:</strong> eBay Sandbox có ít data test — eBay listings có thể trống. Khi có Production App ID thì data sẽ đầy đủ. AI analysis vẫn hoạt động bình thường.</span>
+  </div>
+
   <!-- Status -->
   <div class="status" id="status">
     <div class="spinner"></div>
@@ -321,18 +327,23 @@ async function fetchAmazon(asin, apiKey) {
 }
 
 async function fetchEbay(amazon, ebayId) {
-  if (!ebayId) {
-    // No eBay key: return placeholder
-    return [];
-  }
+  if (!ebayId) return [];
 
-  // Build keyword from amazon title: take first 5 meaningful words
   const kw = (amazon.searchKeywords || [amazon.title])
     .join(' ').split(' ').slice(0,6).join(' ');
 
   const url = BASE + '/api/ebay?keywords=' + encodeURIComponent(kw) + '&appId=' + encodeURIComponent(ebayId);
   const r   = await fetch(url);
   const d   = await r.json();
+
+  // Sandbox mode notice
+  if (d.sandbox) {
+    const notice = document.getElementById('sandboxNotice');
+    if (notice) notice.style.display = 'flex';
+  }
+
+  // Sandbox thường trả ít/không có data thật — dùng AI estimate
+  if (!d.success && d.error === 'NO_RESULTS') return [];
   if (!d.success) throw new Error(d.error || 'eBay API failed');
   return d.listings || [];
 }
